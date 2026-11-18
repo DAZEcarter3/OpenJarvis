@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useAppStore } from '../lib/store';
 import {
@@ -16,6 +16,7 @@ import {
 } from '../lib/api';
 import type { ChannelBinding, ManagedAgent, MemoryStats, MemorySearchResult } from '../lib/api';
 import { getBase, isTauri, authHeaders } from '../lib/api';
+import { relativeScores } from '../lib/memory-score';
 import {
   Database, MessageSquare, Loader2, Brain, Search, FolderOpen, FileText,
   Mail, Hash, MessageCircle, CalendarDays, Contact, StickyNote, BookText,
@@ -1921,6 +1922,10 @@ function MemorySection() {
   // Search
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<MemorySearchResult[]>([]);
+  const rankedResults = useMemo(() => {
+    const relevances = relativeScores(searchResults.map((r) => r.score));
+    return searchResults.map((result, i) => ({ result, relevance: relevances[i] }));
+  }, [searchResults]);
   const [searching, setSearching] = useState(false);
   const [searchDone, setSearchDone] = useState(false);
 
@@ -2136,7 +2141,7 @@ function MemorySection() {
         )}
         {searchResults.length > 0 && (
           <div className="mt-3 space-y-2">
-            {searchResults.map((r, i) => (
+            {rankedResults.map(({ result: r, relevance }, i) => (
               <div
                 key={i}
                 className="rounded-lg p-3 transition-colors"
@@ -2149,19 +2154,23 @@ function MemorySection() {
                   {r.content.length > 250 ? r.content.slice(0, 250) + '...' : r.content}
                 </p>
                 <div className="flex items-center gap-3 mt-2">
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{
-                    background: r.score > 0.5
-                      ? 'rgba(74, 222, 128, 0.1)'
-                      : r.score > 0.2
-                        ? 'var(--color-accent-amber-subtle)'
-                        : 'var(--color-bg-tertiary)',
-                    color: r.score > 0.5
-                      ? 'var(--color-success)'
-                      : r.score > 0.2
-                        ? 'var(--color-warning)'
-                        : 'var(--color-text-tertiary)',
-                  }}>
-                    {(r.score * 100).toFixed(0)}% match
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium"
+                    title={`Relevance compared with the best result for this search (raw score ${r.score.toPrecision(3)})`}
+                    style={{
+                      background: relevance > 0.66
+                        ? 'rgba(74, 222, 128, 0.1)'
+                        : relevance > 0.33
+                          ? 'var(--color-accent-amber-subtle)'
+                          : 'var(--color-bg-tertiary)',
+                      color: relevance > 0.66
+                        ? 'var(--color-success)'
+                        : relevance > 0.33
+                          ? 'var(--color-warning)'
+                          : 'var(--color-text-tertiary)',
+                    }}
+                  >
+                    {(relevance * 100).toFixed(0)}% relevance
                   </span>
                   {r.metadata?.source != null && (
                     <span className="text-[10px]" style={{ color: 'var(--color-text-tertiary)' }}>
